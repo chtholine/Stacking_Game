@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Stacking Game</title>
+    <style>
+        body { 
+            margin: 0;
+            
+        }
+        #score {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 48px;
+        }
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 48px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Score: 0</div>
+    <div id="gameOver">Game Over!</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, currentBlock, previousBlock;
+        let moveAxis = 'x';
+        let direction = 1;
+        let speed = 2;
+        let score = 0;
+        let isGameOver = false;
+        let currentSize = { width: 2, height: 0.5, depth: 2 };
+        let fallenPieces = [];
+
+        function init() {
+            scene = new THREE.Scene();
+		 scene.fog = new THREE.FogExp2(0x8ecae6, 0.02);
+            scene.background = new THREE.Color(0x8ecae6);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            directionalLight.position.set(10, 20, 0);
+            scene.add(directionalLight);
+
+            updateCameraPosition(0);
+            addBlock(0, 0, 0, currentSize);
+            previousBlock = scene.children[scene.children.length - 1];
+            spawnNewBlock();
+
+            document.addEventListener('click', placeBlock);
+            animate();
+        }
+
+        function updateCameraPosition(height) {
+            const distance = 5;
+            camera.position.set(3, height + 4, distance);
+            camera.lookAt(0, height, 0);
+        }
+
+        function spawnNewBlock() {
+    const y = previousBlock.position.y + 0.5;
+    let x = previousBlock.position.x;
+    let z = previousBlock.position.z;
+    
+    // Offset the new block on the moving axis while keeping it centered on the other axis
+    if (moveAxis === 'x') {
+        x = direction === 1 ? x - 6 : x + 6;
+    } else {
+        z = direction === 1 ? z + 6 : z - 6; // Reverse z-axis offset
+    }
+    
+    addBlock(x, y, z, currentSize);
+    currentBlock = scene.children[scene.children.length - 1];
+}
+
+        function addBlock(x, y, z, size) {
+    const geometry = new THREE.BoxGeometry(size.width, size.height, size.depth);
+    
+    // Define an array of pastel colors
+    const pastelColors = [
+        0xffc1cc, // Pastel pink
+        0xa4c2f4, // Pastel blue
+        0xb4eeb4, // Pastel green
+        0xfff1b5, // Pastel yellow
+        0xe4a4f4  // Pastel purple
+    ];
+    
+    // Select a random pastel color
+    const randomColor = pastelColors[Math.floor(Math.random() * pastelColors.length)];
+    
+    const material = new THREE.MeshPhongMaterial({ color: randomColor });
+    const block = new THREE.Mesh(geometry, material);
+    block.position.set(x, y, z);
+    scene.add(block);
+	}
+
+        function placeBlock() {
+            if (isGameOver) {
+                return;
+            }
+
+            const overlap = checkOverlap();
+            if (overlap <= 0) {
+                gameOver();
+                return;
+            }
+
+            let newSize, fallenSize, fallenPosition;
+            if (moveAxis === 'x') {
+                const currentX = currentBlock.position.x;
+                const previousX = previousBlock.position.x;
+                const maxDistance = currentSize.width;
+                const distance = currentX - previousX;
+                newSize = Math.max(0, maxDistance - Math.abs(distance));
+
+                if (distance > 0) {
+                    currentBlock.position.x -= (maxDistance - newSize) / 2;
+                    fallenSize = maxDistance - newSize;
+                    fallenPosition = currentX + newSize / 2 + fallenSize / 2;
+                } else {
+                    currentBlock.position.x += (maxDistance - newSize) / 2;
+                    fallenSize = maxDistance - newSize;
+                    fallenPosition = currentX - newSize / 2 - fallenSize / 2;
+                }
+
+                currentBlock.scale.x = newSize / currentSize.width;
+                currentSize.width = newSize;
+            } else {
+                const currentZ = currentBlock.position.z;
+                const previousZ = previousBlock.position.z;
+                const maxDistance = currentSize.depth;
+                const distance = currentZ - previousZ;
+                newSize = Math.max(0, maxDistance - Math.abs(distance));
+
+                if (distance > 0) {
+                    currentBlock.position.z -= (maxDistance - newSize) / 2;
+                    fallenSize = maxDistance - newSize;
+                    fallenPosition = currentZ + newSize / 2 + fallenSize / 2;
+                } else {
+                    currentBlock.position.z += (maxDistance - newSize) / 2;
+                    fallenSize = maxDistance - newSize;
+                    fallenPosition = currentZ - newSize / 2 - fallenSize / 2;
+                }
+
+                currentBlock.scale.z = newSize / currentSize.depth;
+                currentSize.depth = newSize;
+            }
+
+            if (fallenSize > 0) {
+                const fallenGeometry = new THREE.BoxGeometry(
+                    moveAxis === 'x' ? fallenSize : currentSize.width,
+                    currentSize.height,
+                    moveAxis === 'x' ? currentSize.depth : fallenSize
+                );
+                const fallenMaterial = new THREE.MeshPhongMaterial({ 
+                    color: currentBlock.material.color 
+                });
+                const fallenBlock = new THREE.Mesh(fallenGeometry, fallenMaterial);
+                fallenBlock.position.set(
+                    moveAxis === 'x' ? fallenPosition : currentBlock.position.x,
+                    currentBlock.position.y,
+                    moveAxis === 'x' ? currentBlock.position.z : fallenPosition
+                );
+                scene.add(fallenBlock);
+                fallenPieces.push(fallenBlock);
+            }
+
+            score++;
+            document.getElementById('score').textContent = `Score: ${score}`;
+            previousBlock = currentBlock;
+            direction *= -1;
+            moveAxis = moveAxis === 'x' ? 'z' : 'x';
+            spawnNewBlock();
+            updateCameraPosition(currentBlock.position.y);
+        }
+
+        function checkOverlap() {
+            if (moveAxis === 'x') {
+                const currentX = currentBlock.position.x;
+                const previousX = previousBlock.position.x;
+                const maxDistance = currentSize.width;
+                const distance = Math.abs(currentX - previousX);
+                return Math.max(0, 1 - (distance / maxDistance));
+            } else {
+                const currentZ = currentBlock.position.z;
+                const previousZ = previousBlock.position.z;
+                const maxDistance = currentSize.depth;
+                const distance = Math.abs(currentZ - previousZ);
+                return Math.max(0, 1 - (distance / maxDistance));
+            }
+        }
+
+        function gameOver() {
+            isGameOver = true;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (!isGameOver && currentBlock) {
+                const movement = direction * speed * 0.05;
+
+                if (moveAxis === 'x') {
+                    currentBlock.position.x += movement;
+                    if (Math.abs(currentBlock.position.x - previousBlock.position.x) > 8) {
+                        gameOver();
+                    }
+                } else {
+                    currentBlock.position.z -= movement;
+                    if (Math.abs(currentBlock.position.z - previousBlock.position.z) > 8) {
+                        gameOver();
+                    }
+                }
+            }
+
+            updateFallenPieces();
+            renderer.render(scene, camera);
+        }
+
+        function updateFallenPieces() {
+            for (let i = fallenPieces.length - 1; i >= 0; i--) {
+                fallenPieces[i].position.y -= 0.1;
+                if (fallenPieces[i].position.y < -10) {
+                    scene.remove(fallenPieces[i]);
+                    fallenPieces.splice(i, 1);
+                }
+            }
+        }
+
+        window.addEventListener('resize', function() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        init();
+    </script>
+</body>
+</html>
